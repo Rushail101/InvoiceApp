@@ -364,14 +364,24 @@ with tab1:
                 'tax_amount': tax_amount,
                 'total': total
             }
-            # Ensure items list exists
-            if 'items' not in st.session_state or st.session_state.items is None:
-                st.session_state.items = []
-            if not isinstance(st.session_state.items, list):
-                st.session_state.items = []
-            
-            st.session_state.items.append(item)
-            st.rerun()
+            # Multiple safety checks
+            try:
+                if 'items' not in st.session_state:
+                    st.session_state['items'] = []
+                if st.session_state.items is None:
+                    st.session_state['items'] = []
+                if not isinstance(st.session_state.items, list):
+                    st.session_state['items'] = []
+                
+                # Create a new list, append, then reassign
+                current_items = list(st.session_state.items)
+                current_items.append(item)
+                st.session_state.items = current_items
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error adding item: {e}")
+                st.session_state['items'] = [item]
+                st.rerun()
         else:
             st.error("Please fill product name and HSN code")
     
