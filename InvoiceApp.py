@@ -26,15 +26,15 @@ def init_supabase():
 
 supabase = init_supabase()
 
-# Initialize session state IMMEDIATELY after supabase
-if 'items' not in st.session_state:
-    st.session_state.items = []
+# Initialize session state IMMEDIATELY after supabase - use unique key name
+if 'invoice_items' not in st.session_state:
+    st.session_state.invoice_items = []
 if 'invoice_generated' not in st.session_state:
     st.session_state.invoice_generated = False
 
 # Ensure items is always a list
-if not isinstance(st.session_state.items, list):
-    st.session_state.items = []
+if not isinstance(st.session_state.invoice_items, list):
+    st.session_state.invoice_items = []
 
 # Number to words conversion
 def number_to_words(num):
@@ -398,13 +398,13 @@ with tab1:
                 st.write(f"DEBUG: Item created: {item}")
                 
                 # Initialize items list if it doesn't exist
-                if 'items' not in st.session_state:
-                    st.session_state.items = []
+                if 'invoice_items' not in st.session_state:
+                    st.session_state.invoice_items = []
                     st.write("DEBUG: Initialized empty items list")
                 
                 # Append the item
-                st.session_state.items.append(item)
-                st.write(f"DEBUG: Item appended. New count: {len(st.session_state.items)}")
+                st.session_state.invoice_items.append(item)
+                st.write(f"DEBUG: Item appended. New count: {len(st.session_state.invoice_items)}")
                 
                 st.success(f"✅ Added: {product_name} - ₹{total:.2f}")
                 st.balloons()
@@ -418,7 +418,7 @@ with tab1:
                 st.code(traceback.format_exc())
     
     # Display current items count ALWAYS
-    current_items = st.session_state.get('items', [])
+    current_items = st.session_state.get('invoice_items', [])
     
     st.markdown("---")
     if len(current_items) > 0:
@@ -428,20 +428,13 @@ with tab1:
     
     # DEBUG INFORMATION
     with st.expander("🔍 Debug Information"):
-        st.write("**Session State Items:**", current_items)
-        st.write("**Items Count:**", len(current_items))
+        st.write("**Session State Items:**", st.session_state.invoice_items)
+        st.write("**Items Count:**", len(st.session_state.invoice_items))
         st.write("**Invoice Generated:**", st.session_state.get('invoice_generated', False))
         st.write("**Has PDF Buffer:**", 'pdf_buffer' in st.session_state)
     
     # Display items
-    try:
-        items_list = st.session_state.get('items', [])
-        if not isinstance(items_list, list):
-            items_list = []
-            st.session_state['items'] = []
-    except:
-        items_list = []
-        st.session_state['items'] = []
+    items_list = st.session_state.invoice_items
     
     if len(items_list) > 0:
         st.markdown("---")
@@ -461,7 +454,7 @@ with tab1:
         col1, col2 = st.columns([3, 1])
         with col2:
             if st.button("🗑️ Clear All Items", key="clear_items"):
-                st.session_state['items'] = []
+                st.session_state.invoice_items = []
                 st.rerun()
         
         st.markdown("---")
@@ -639,7 +632,7 @@ with tab1:
             st.write("")
             
             if st.button("🔄 Create New Invoice", use_container_width=True, key="new_invoice_btn"):
-                st.session_state['items'] = []
+                st.session_state.invoice_items = []
                 st.session_state['invoice_generated'] = False
                 if 'pdf_buffer' in st.session_state:
                     del st.session_state['pdf_buffer']
