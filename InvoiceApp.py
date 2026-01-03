@@ -407,10 +407,21 @@ with tab1:
                 st.error(f"❌ Error adding item: {str(e)}")
                 st.code(f"Debug info: {e}")
     
-    # Display current items count
+    # Display current items count ALWAYS
     current_items = st.session_state.get('items', [])
+    
+    st.markdown("---")
     if len(current_items) > 0:
-        st.info(f"📦 {len(current_items)} item(s) added to invoice")
+        st.success(f"✅ {len(current_items)} item(s) added to invoice")
+    else:
+        st.warning("⚠️ No items added yet. Add at least one item to generate invoice.")
+    
+    # DEBUG INFORMATION
+    with st.expander("🔍 Debug Information"):
+        st.write("**Session State Items:**", current_items)
+        st.write("**Items Count:**", len(current_items))
+        st.write("**Invoice Generated:**", st.session_state.get('invoice_generated', False))
+        st.write("**Has PDF Buffer:**", 'pdf_buffer' in st.session_state)
     
     # Display items
     try:
@@ -424,7 +435,7 @@ with tab1:
     
     if len(items_list) > 0:
         st.markdown("---")
-        st.markdown("### 📦 Items Added")
+        st.markdown("### 📦 Items Added to Invoice")
         
         try:
             items_df = pd.DataFrame(items_list)
@@ -439,8 +450,8 @@ with tab1:
         
         col1, col2 = st.columns([3, 1])
         with col2:
-            if st.button("🗑️ Clear All Items"):
-                st.session_state.items = []
+            if st.button("🗑️ Clear All Items", key="clear_items"):
+                st.session_state['items'] = []
                 st.rerun()
         
         st.markdown("---")
@@ -536,40 +547,56 @@ with tab1:
                 st.error("❌ Please add at least one item to the invoice")
             else:
                 try:
-                    invoice_data = {
-                        'invoice_number': invoice_number,
-                        'invoice_date': invoice_date.strftime('%Y-%m-%d'),
-                        'customer_name': customer_name.strip(),
-                        'customer_gstin': customer_gstin.strip() if customer_gstin else '',
-                        'customer_state': customer_state.strip(),
-                        'billing_address': billing_address.strip(),
-                        'shipping_address': shipping_address.strip() if shipping_address else billing_address.strip(),
-                        'place_of_supply': place_of_supply,
-                        'items': items_list,
-                        'subtotal': subtotal,
-                        'total_tax': total_tax,
-                        'grand_total': grand_total,
-                        'is_intrastate': is_intrastate,
-                        'amount_in_words': amount_in_words,
-                        'created_at': datetime.now().isoformat()
-                    }
-                    
-                    # Generate PDF
-                    with st.spinner('📄 Generating PDF...'):
+                    with st.spinner('📄 Generating invoice...'):
+                        invoice_data = {
+                            'invoice_number': invoice_number,
+                            'invoice_date': invoice_date.strftime('%Y-%m-%d'),
+                            'customer_name': customer_name.strip(),
+                            'customer_gstin': customer_gstin.strip() if customer_gstin else '',
+                            'customer_state': customer_state.strip(),
+                            'billing_address': billing_address.strip(),
+                            'shipping_address': shipping_address.strip() if shipping_address else billing_address.strip(),
+                            'place_of_supply': place_of_supply,
+                            'items': items_list,
+                            'subtotal': subtotal,
+                            'total_tax': total_tax,
+                            'grand_total': grand_total,
+                            'is_intrastate': is_intrastate,
+                            'amount_in_words': amount_in_words,
+                            'created_at': datetime.now().isoformat()
+                        }
+                        
+                        # Generate PDF
                         pdf_buffer = generate_pdf(invoice_data, company_data)
+                        
+                        # Save to database
+                        save_invoice(invoice_data)
+                        
+                        # Store in session state
+                        st.session_state['invoice_generated'] = True
+                        st.session_state['pdf_buffer'] = pdf_buffer
+                        st.session_state['current_invoice_number'] = invoice_number
+                        st.session_state['current_invoice_date'] = invoice_date.strftime('%Y%m%d')
+                        
+                    st.success("✅ Invoice generated successfully!")
+                    st.balloons()
                     
-                    # Save to database
-                    with st.spinner('💾 Saving to database...'):
-                        if save_invoice(invoice_data):
-                            st.session_state.invoice_generated = True
-                            st.session_state.pdf_buffer = pdf_buffer
-                            st.session_state.current_invoice_number = invoice_number
-                            st.session_state.current_invoice_date = invoice_date.strftime('%Y%m%d')
-                            st.success("✅ Invoice generated successfully!")
-                            st.balloons()
-                            st.rerun()
-                        else:
-                            st.error("❌ Failed to save invoice to database")
+                    # Show download button immediately without rerun
+                    st.markdown("---")
+                    st.markdown("## 🎉 Invoice Ready!")
+                    
+                    col_a, col_b, col_c = st.columns([1, 2, 1])
+                    with col_b:
+                        st.download_button(
+                            label="📥 DOWNLOAD INVOICE PDF",
+                            data=pdf_buffer,
+                            file_name=f"Invoice_{invoice_number}_{invoice_date.strftime('%Y%m%d')}.pdf",
+                            mime="application/pdf",
+                            use_container_width=True,
+                            key="immediate_download",
+                            type="primary"
+                        )
+                    
                 except Exception as e:
                     st.error(f"❌ Error generating invoice: {str(e)}")
                     import traceback
@@ -579,33 +606,37 @@ with tab1:
         # No items added yet
         st.info("👆 Add at least one item to generate invoice")
     
-    # Download and reset section - Show AFTER generation
-    if st.session_state.get('invoice_generated', False) and hasattr(st.session_state, 'pdf_buffer'):
+    # Download and reset section - Show AFTER generation (persistent across reruns)
+    if st.session_state.get('invoice_generated', False) and st.session_state.get('pdf_buffer'):
         st.markdown("---")
-        st.success("🎉 Invoice Generated Successfully!")
+        st.markdown("## 🎉 Invoice Generated Successfully!")
         
-        col1, col2, col3 = st.columns([1, 1, 1])
+        st.info(f"📄 Invoice Number: **{st.session_state.get('current_invoice_number', 'N/A')}**")
+        
+        col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
             st.download_button(
-                label="⬇️ Download Invoice PDF",
+                label="📥 DOWNLOAD INVOICE PDF",
                 data=st.session_state.pdf_buffer,
                 file_name=f"Invoice_{st.session_state.get('current_invoice_number', 'INV')}_{st.session_state.get('current_invoice_date', datetime.now().strftime('%Y%m%d'))}.pdf",
                 mime="application/pdf",
                 use_container_width=True,
-                key="main_download"
+                key="persistent_download",
+                type="primary"
             )
             
             st.write("")
+            st.write("")
             
-            if st.button("🔄 Create New Invoice", use_container_width=True, type="primary", key="new_invoice_btn"):
-                st.session_state.items = []
-                st.session_state.invoice_generated = False
-                if hasattr(st.session_state, 'pdf_buffer'):
-                    delattr(st.session_state, 'pdf_buffer')
-                if hasattr(st.session_state, 'current_invoice_number'):
-                    delattr(st.session_state, 'current_invoice_number')
-                if hasattr(st.session_state, 'current_invoice_date'):
-                    delattr(st.session_state, 'current_invoice_date')
+            if st.button("🔄 Create New Invoice", use_container_width=True, key="new_invoice_btn"):
+                st.session_state['items'] = []
+                st.session_state['invoice_generated'] = False
+                if 'pdf_buffer' in st.session_state:
+                    del st.session_state['pdf_buffer']
+                if 'current_invoice_number' in st.session_state:
+                    del st.session_state['current_invoice_number']
+                if 'current_invoice_date' in st.session_state:
+                    del st.session_state['current_invoice_date']
                 st.rerun()
 
 with tab2:
