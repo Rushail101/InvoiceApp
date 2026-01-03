@@ -364,16 +364,24 @@ with tab1:
                 'tax_amount': tax_amount,
                 'total': total
             }
+            if 'items' not in st.session_state:
+                st.session_state.items = []
             st.session_state.items.append(item)
             st.rerun()
         else:
             st.error("Please fill product name and HSN code")
     
     # Display items
-    if len(st.session_state.items) > 0:
+    try:
+        items_list = st.session_state.get('items', [])
+    except:
+        items_list = []
+        st.session_state.items = []
+    
+    if len(items_list) > 0:
         st.markdown("### 📦 Items Added")
         
-        items_df = pd.DataFrame(st.session_state.items)
+        items_df = pd.DataFrame(items_list)
         items_df['S.No'] = range(1, len(items_df) + 1)
         items_df = items_df[['S.No', 'product_name', 'hsn_code', 'quantity', 'rate', 'taxable_value', 'gst_rate', 'tax_amount', 'total']]
         items_df.columns = ['S.No', 'Product', 'HSN', 'Qty', 'Rate', 'Taxable Value', 'GST%', 'Tax', 'Total']
@@ -387,9 +395,9 @@ with tab1:
                 st.rerun()
         
         # Calculate totals
-        subtotal = sum(item['taxable_value'] for item in st.session_state.items)
-        total_tax = sum(item['tax_amount'] for item in st.session_state.items)
-        grand_total = sum(item['total'] for item in st.session_state.items)
+        subtotal = sum(item['taxable_value'] for item in items_list)
+        total_tax = sum(item['tax_amount'] for item in items_list)
+        grand_total = sum(item['total'] for item in items_list)
         
         # Check if intrastate or interstate
         is_intrastate = company_state.strip().lower() == (customer_state.strip().lower() if 'customer_state' in locals() else '')
@@ -430,7 +438,7 @@ with tab1:
                         'billing_address': billing_address,
                         'shipping_address': shipping_address,
                         'place_of_supply': place_of_supply,
-                        'items': st.session_state.items,
+                        'items': items_list,
                         'subtotal': subtotal,
                         'total_tax': total_tax,
                         'grand_total': grand_total,
