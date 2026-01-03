@@ -352,9 +352,9 @@ with tab1:
     col1, col2, col3, col4, col5 = st.columns([3, 2, 1, 1, 1])
     
     with col1:
-        product_name = st.text_input("Product/Service Name", key="product")
+        product_name = st.text_input("Product/Service Name", key="product", value="")
     with col2:
-        hsn_code = st.text_input("HSN/SAC Code", key="hsn")
+        hsn_code = st.text_input("HSN/SAC Code", key="hsn", value="")
     with col3:
         quantity = st.number_input("Quantity", min_value=1, value=1, key="qty")
     with col4:
@@ -362,59 +362,80 @@ with tab1:
     with col5:
         gst_rate = st.selectbox("GST %", [0, 5, 12, 18, 28], key="gst")
     
-    if st.button("➕ Add Item"):
-        if product_name and hsn_code:
-            taxable_value = quantity * rate
-            tax_amount = (taxable_value * gst_rate) / 100
-            total = taxable_value + tax_amount
-            
-            item = {
-                'product_name': product_name,
-                'hsn_code': hsn_code,
-                'quantity': quantity,
-                'rate': rate,
-                'taxable_value': taxable_value,
-                'gst_rate': gst_rate,
-                'tax_amount': tax_amount,
-                'total': total
-            }
-            # Multiple safety checks
+    col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 1])
+    with col_btn2:
+        add_item_clicked = st.button("➕ Add Item", use_container_width=True, type="primary")
+    
+    if add_item_clicked:
+        if not product_name or not product_name.strip():
+            st.error("❌ Please enter product name")
+        elif not hsn_code or not hsn_code.strip():
+            st.error("❌ Please enter HSN/SAC code")
+        elif rate <= 0:
+            st.error("❌ Please enter a valid rate")
+        else:
             try:
+                taxable_value = quantity * rate
+                tax_amount = (taxable_value * gst_rate) / 100
+                total = taxable_value + tax_amount
+                
+                item = {
+                    'product_name': product_name.strip(),
+                    'hsn_code': hsn_code.strip(),
+                    'quantity': quantity,
+                    'rate': rate,
+                    'taxable_value': taxable_value,
+                    'gst_rate': gst_rate,
+                    'tax_amount': tax_amount,
+                    'total': total
+                }
+                
+                # Initialize if needed
                 if 'items' not in st.session_state:
                     st.session_state['items'] = []
-                if st.session_state.items is None:
-                    st.session_state['items'] = []
-                if not isinstance(st.session_state.items, list):
-                    st.session_state['items'] = []
                 
-                # Create a new list, append, then reassign
-                current_items = list(st.session_state.items)
-                current_items.append(item)
-                st.session_state.items = current_items
+                # Add item
+                st.session_state['items'].append(item)
+                
+                st.success(f"✅ Added: {product_name} - ₹{total:.2f}")
+                st.balloons()
+                
+                # Force rerun to clear form
                 st.rerun()
+                
             except Exception as e:
-                st.error(f"Error adding item: {e}")
-                st.session_state['items'] = [item]
-                st.rerun()
-        else:
-            st.error("Please fill product name and HSN code")
+                st.error(f"❌ Error adding item: {str(e)}")
+                st.code(f"Debug info: {e}")
+    
+    # Display current items count
+    current_items = st.session_state.get('items', [])
+    if len(current_items) > 0:
+        st.info(f"📦 {len(current_items)} item(s) added to invoice")
     
     # Display items
     try:
         items_list = st.session_state.get('items', [])
+        if not isinstance(items_list, list):
+            items_list = []
+            st.session_state['items'] = []
     except:
         items_list = []
-        st.session_state.items = []
+        st.session_state['items'] = []
     
     if len(items_list) > 0:
+        st.markdown("---")
         st.markdown("### 📦 Items Added")
         
-        items_df = pd.DataFrame(items_list)
-        items_df['S.No'] = range(1, len(items_df) + 1)
-        items_df = items_df[['S.No', 'product_name', 'hsn_code', 'quantity', 'rate', 'taxable_value', 'gst_rate', 'tax_amount', 'total']]
-        items_df.columns = ['S.No', 'Product', 'HSN', 'Qty', 'Rate', 'Taxable Value', 'GST%', 'Tax', 'Total']
-        
-        st.dataframe(items_df, use_container_width=True, hide_index=True)
+        try:
+            items_df = pd.DataFrame(items_list)
+            items_df['S.No'] = range(1, len(items_df) + 1)
+            items_df = items_df[['S.No', 'product_name', 'hsn_code', 'quantity', 'rate', 'taxable_value', 'gst_rate', 'tax_amount', 'total']]
+            items_df.columns = ['S.No', 'Product', 'HSN', 'Qty', 'Rate', 'Taxable Value', 'GST%', 'Tax', 'Total']
+            
+            st.dataframe(items_df, use_container_width=True, hide_index=True)
+        except Exception as e:
+            st.error(f"Error displaying items: {e}")
+            st.write("Items in session:", items_list)
         
         col1, col2 = st.columns([3, 1])
         with col2:
