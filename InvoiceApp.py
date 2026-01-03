@@ -253,6 +253,10 @@ if 'items' not in st.session_state:
 if 'invoice_generated' not in st.session_state:
     st.session_state.invoice_generated = False
 
+# Ensure items is always a list
+if not isinstance(st.session_state.items, list):
+    st.session_state.items = []
+
 # Main app
 st.title("🧾 GST Invoice Generator")
 st.markdown("---")
@@ -260,12 +264,12 @@ st.markdown("---")
 # Sidebar for company details
 with st.sidebar:
     st.header("⚙️ Company Details")
-    company_name = st.text_input("Company Name", "NEEDLEPOINT")
-    company_address = st.text_area("Address", "J3/70, 1st Floor, Rajouri Garden, New Delhi, Delhi - 110027")
-    company_gstin = st.text_input("GSTIN", "07AAXFN6403D1Z5")
-    company_state = st.text_input("State", "New Delhi")
-    company_phone = st.text_input("Phone", "+91-9988998727")
-    company_bank = st.text_area("Bank Details (Optional)", "Bank: ICICI Bank\nA/c No: 181805001556\nIFSC: ICIC0001818\nBranch:WH-9 Mayaprui Phase 1")
+    company_name = st.text_input("Company Name", "Your Company Pvt Ltd")
+    company_address = st.text_area("Address", "123, Business Street\nCity - 400001\nMaharashtra, India")
+    company_gstin = st.text_input("GSTIN", "27AABCU9603R1ZM")
+    company_state = st.text_input("State", "Maharashtra")
+    company_phone = st.text_input("Phone", "+91-9876543210")
+    company_bank = st.text_area("Bank Details (Optional)", "Bank: HDFC Bank\nA/c No: 12345678901234\nIFSC: HDFC0001234\nBranch: Mumbai")
 
 company_data = {
     'name': company_name,
@@ -366,7 +370,7 @@ with tab1:
             st.error("Please fill product name and HSN code")
     
     # Display items
-    if st.session_state.items and len(st.session_state.items) > 0:
+    if len(st.session_state.items) > 0:
         st.markdown("### 📦 Items Added")
         
         items_df = pd.DataFrame(st.session_state.items)
@@ -494,4 +498,3 @@ with tab3:
 
 st.markdown("---")
 st.caption("💡 Tip: Make sure to set up your Supabase tables before using this app. See setup instructions in the documentation.")
-
