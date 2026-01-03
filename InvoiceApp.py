@@ -144,6 +144,15 @@ def save_invoice(invoice_data):
         st.error(f"Error saving invoice: {e}")
         return False
 
+def delete_invoice(invoice_id):
+    """Delete invoice from database"""
+    try:
+        supabase.table('invoices').delete().eq('id', invoice_id).execute()
+        return True
+    except Exception as e:
+        st.error(f"Error deleting invoice: {e}")
+        return False
+
 def generate_pdf(invoice_data, company_data):
     """Generate PDF invoice"""
     buffer = BytesIO()
@@ -683,10 +692,10 @@ with tab2:
                             st.metric("Amount", f"₹{invoice['grand_total']:,.2f}")
                         
                         with col4:
-                            col_view, col_download = st.columns(2)
+                            col_view, col_download, col_delete = st.columns(3)
                             
                             with col_view:
-                                if st.button("👁️ View", key=f"view_{invoice['id']}", use_container_width=True):
+                                if st.button("👁️", key=f"view_{invoice['id']}", use_container_width=True, help="View Invoice"):
                                     st.session_state.selected_invoice = invoice
                                     st.session_state.show_invoice_modal = True
                             
@@ -699,8 +708,41 @@ with tab2:
                                     file_name=f"{invoice['invoice_number']}.pdf",
                                     mime="application/pdf",
                                     key=f"download_{invoice['id']}",
-                                    use_container_width=True
+                                    use_container_width=True,
+                                    help="Download PDF"
                                 )
+                            
+                            with col_delete:
+                                if st.button("🗑️", key=f"delete_{invoice['id']}", use_container_width=True, help="Delete Invoice", type="secondary"):
+                                    st.session_state.delete_confirm_id = invoice['id']
+                                    st.session_state.delete_confirm_number = invoice['invoice_number']
+                        
+                        # Delete confirmation dialog
+                        if st.session_state.get('delete_confirm_id') == invoice['id']:
+                            st.warning(f"⚠️ Are you sure you want to delete invoice **{st.session_state.get('delete_confirm_number')}**? This action cannot be undone!")
+                            
+                            col_confirm, col_cancel = st.columns(2)
+                            with col_confirm:
+                                if st.button("✅ Yes, Delete", key=f"confirm_delete_{invoice['id']}", type="primary", use_container_width=True):
+                                    if delete_invoice(invoice['id']):
+                                        st.success(f"✅ Invoice {invoice['invoice_number']} deleted successfully!")
+                                        # Clear confirmation state
+                                        if 'delete_confirm_id' in st.session_state:
+                                            del st.session_state.delete_confirm_id
+                                        if 'delete_confirm_number' in st.session_state:
+                                            del st.session_state.delete_confirm_number
+                                        st.rerun()
+                                    else:
+                                        st.error("❌ Failed to delete invoice")
+                            
+                            with col_cancel:
+                                if st.button("❌ Cancel", key=f"cancel_delete_{invoice['id']}", use_container_width=True):
+                                    # Clear confirmation state
+                                    if 'delete_confirm_id' in st.session_state:
+                                        del st.session_state.delete_confirm_id
+                                    if 'delete_confirm_number' in st.session_state:
+                                        del st.session_state.delete_confirm_number
+                                    st.rerun()
                         
                         st.markdown("---")
                 
@@ -770,10 +812,11 @@ with tab2:
                     
                     st.markdown("---")
                     
-                    # Download button
-                    pdf_buffer = generate_pdf(invoice, company_data)
+                    # Download and delete buttons
                     col1, col2, col3 = st.columns([1, 1, 1])
+                    
                     with col2:
+                        pdf_buffer = generate_pdf(invoice, company_data)
                         st.download_button(
                             label="📥 Download Invoice PDF",
                             data=pdf_buffer,
@@ -782,6 +825,16 @@ with tab2:
                             key="download_modal",
                             use_container_width=True
                         )
+                    
+                    with col3:
+                        if st.button("🗑️ Delete Invoice", key="delete_modal", use_container_width=True, type="secondary"):
+                            if delete_invoice(invoice['id']):
+                                st.success(f"✅ Invoice {invoice['invoice_number']} deleted!")
+                                st.session_state.show_invoice_modal = False
+                                st.session_state.selected_invoice = None
+                                st.rerun()
+                            else:
+                                st.error("❌ Failed to delete invoice")
             else:
                 st.info("No invoices match your search.")
         else:
