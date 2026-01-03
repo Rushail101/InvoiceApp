@@ -295,6 +295,13 @@ with tab1:
         
         selected_customer = st.selectbox("Select Customer", customer_names)
         
+        # Initialize variables
+        customer_name = ""
+        customer_gstin = ""
+        billing_address = ""
+        shipping_address = ""
+        customer_state = ""
+        
         if selected_customer != "-- New Customer --":
             customer = next((c for c in customers if c['name'] == selected_customer), None)
             if customer:
@@ -303,6 +310,13 @@ with tab1:
                 billing_address = customer.get('billing_address', '')
                 shipping_address = customer.get('shipping_address', '')
                 customer_state = customer.get('state', '')
+                
+                # Display in text inputs (read-only style)
+                st.text_input("Customer/Company Name *", value=customer_name, key="existing_customer", disabled=True)
+                st.text_input("Customer GSTIN", value=customer_gstin, key="existing_gstin", disabled=True)
+                st.text_area("Billing Address *", value=billing_address, key="existing_billing", disabled=True)
+                st.text_area("Shipping Address *", value=shipping_address, key="existing_shipping", disabled=True)
+                st.text_input("Customer State *", value=customer_state, key="existing_state", disabled=True)
         else:
             customer_name = st.text_input("Customer/Company Name *", key="new_customer")
             customer_gstin = st.text_input("Customer GSTIN (Optional)", key="new_gstin")
@@ -486,55 +500,83 @@ with tab1:
         col1, col2, col3 = st.columns([1, 1, 1])
         with col2:
             if st.button("📄 Generate Invoice", type="primary", use_container_width=True):
-                if not customer_name or not billing_address:
-                    st.error("Please fill all required customer details")
+                # Validate customer details
+                if 'customer_name' not in locals() or not customer_name:
+                    st.error("❌ Please fill customer name")
+                elif 'billing_address' not in locals() or not billing_address:
+                    st.error("❌ Please fill billing address")
+                elif 'customer_state' not in locals() or not customer_state:
+                    st.error("❌ Please fill customer state")
+                elif len(items_list) == 0:
+                    st.error("❌ Please add at least one item to the invoice")
                 else:
-                    invoice_data = {
-                        'invoice_number': invoice_number,
-                        'invoice_date': invoice_date.strftime('%Y-%m-%d'),
-                        'customer_name': customer_name,
-                        'customer_gstin': customer_gstin,
-                        'customer_state': customer_state,
-                        'billing_address': billing_address,
-                        'shipping_address': shipping_address,
-                        'place_of_supply': place_of_supply,
-                        'items': items_list,
-                        'subtotal': subtotal,
-                        'total_tax': total_tax,
-                        'grand_total': grand_total,
-                        'is_intrastate': is_intrastate,
-                        'amount_in_words': amount_in_words,
-                        'created_at': datetime.now().isoformat()
-                    }
-                    
-                    # Generate PDF
-                    pdf_buffer = generate_pdf(invoice_data, company_data)
-                    
-                    # Save to database
-                    save_invoice(invoice_data)
-                    
-                    st.session_state.invoice_generated = True
-                    st.session_state.pdf_buffer = pdf_buffer
-                    st.success("✅ Invoice generated successfully!")
-                    st.rerun()
+                    try:
+                        invoice_data = {
+                            'invoice_number': invoice_number,
+                            'invoice_date': invoice_date.strftime('%Y-%m-%d'),
+                            'customer_name': customer_name,
+                            'customer_gstin': customer_gstin if 'customer_gstin' in locals() else '',
+                            'customer_state': customer_state,
+                            'billing_address': billing_address,
+                            'shipping_address': shipping_address if 'shipping_address' in locals() else billing_address,
+                            'place_of_supply': place_of_supply,
+                            'items': items_list,
+                            'subtotal': subtotal,
+                            'total_tax': total_tax,
+                            'grand_total': grand_total,
+                            'is_intrastate': is_intrastate,
+                            'amount_in_words': amount_in_words,
+                            'created_at': datetime.now().isoformat()
+                        }
+                        
+                        # Generate PDF
+                        with st.spinner('Generating PDF...'):
+                            pdf_buffer = generate_pdf(invoice_data, company_data)
+                        
+                        # Save to database
+                        with st.spinner('Saving to database...'):
+                            if save_invoice(invoice_data):
+                                st.session_state.invoice_generated = True
+                                st.session_state.pdf_buffer = pdf_buffer
+                                st.session_state.current_invoice_number = invoice_number
+                                st.session_state.current_invoice_date = invoice_date.strftime('%Y%m%d')
+                                st.success("✅ Invoice generated successfully!")
+                                st.balloons()
+                                st.rerun()
+                            else:
+                                st.error("❌ Failed to save invoice to database")
+                    except Exception as e:
+                        st.error(f"❌ Error generating invoice: {str(e)}")
+                        import traceback
+                        st.code(traceback.format_exc())
     
-    # Download button
+    # Download and reset section
     if st.session_state.invoice_generated and hasattr(st.session_state, 'pdf_buffer'):
+        st.markdown("---")
+        st.success("🎉 Invoice Generated Successfully!")
+        
         col1, col2, col3 = st.columns([1, 1, 1])
         with col2:
             st.download_button(
                 label="⬇️ Download Invoice PDF",
                 data=st.session_state.pdf_buffer,
-                file_name=f"Invoice_{invoice_number}_{invoice_date.strftime('%Y%m%d')}.pdf",
+                file_name=f"Invoice_{st.session_state.get('current_invoice_number', 'INV')}_{st.session_state.get('current_invoice_date', datetime.now().strftime('%Y%m%d'))}.pdf",
                 mime="application/pdf",
-                use_container_width=True
+                use_container_width=True,
+                key="main_download"
             )
             
-            if st.button("🔄 Create New Invoice", use_container_width=True):
+            st.write("")
+            
+            if st.button("🔄 Create New Invoice", use_container_width=True, type="primary"):
                 st.session_state.items = []
                 st.session_state.invoice_generated = False
                 if hasattr(st.session_state, 'pdf_buffer'):
                     delattr(st.session_state, 'pdf_buffer')
+                if hasattr(st.session_state, 'current_invoice_number'):
+                    delattr(st.session_state, 'current_invoice_number')
+                if hasattr(st.session_state, 'current_invoice_date'):
+                    delattr(st.session_state, 'current_invoice_date')
                 st.rerun()
     else:
         st.info("👆 Add items to the invoice to see totals and generate PDF")
