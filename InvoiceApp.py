@@ -281,7 +281,7 @@ company_data = {
 }
 
 # Main form
-tab1, tab2, tab3 = st.tabs(["📝 Create Invoice", "📊 Invoice History", "👥 Customers"])
+tab1, tab2, tab3, tab4 = st.tabs(["📝 Create Invoice", "📊 Invoice History", "👥 Customers", "📈 HSN Analytics"])
 
 with tab1:
     col1, col2 = st.columns([2, 1])
@@ -408,6 +408,52 @@ with tab1:
                 st.session_state.items = []
                 st.rerun()
         
+        st.markdown("---")
+        st.markdown("### ➕ Add More Products")
+        
+        # Show add product form even when items exist
+        col1, col2, col3, col4, col5 = st.columns([3, 2, 1, 1, 1])
+        
+        with col1:
+            extra_product = st.text_input("Product/Service Name", key="extra_product")
+        with col2:
+            extra_hsn = st.text_input("HSN/SAC Code", key="extra_hsn")
+        with col3:
+            extra_qty = st.number_input("Quantity", min_value=1, value=1, key="extra_qty")
+        with col4:
+            extra_rate = st.number_input("Rate (₹)", min_value=0.0, value=0.0, step=0.01, key="extra_rate")
+        with col5:
+            extra_gst = st.selectbox("GST %", [0, 5, 12, 18, 28], key="extra_gst")
+        
+        if st.button("➕ Add Another Item", key="add_extra"):
+            if extra_product and extra_hsn:
+                extra_taxable = extra_qty * extra_rate
+                extra_tax = (extra_taxable * extra_gst) / 100
+                extra_total = extra_taxable + extra_tax
+                
+                extra_item = {
+                    'product_name': extra_product,
+                    'hsn_code': extra_hsn,
+                    'quantity': extra_qty,
+                    'rate': extra_rate,
+                    'taxable_value': extra_taxable,
+                    'gst_rate': extra_gst,
+                    'tax_amount': extra_tax,
+                    'total': extra_total
+                }
+                try:
+                    current_items = list(st.session_state.items)
+                    current_items.append(extra_item)
+                    st.session_state.items = current_items
+                    st.success("✅ Item added!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error: {e}")
+            else:
+                st.error("Please fill product name and HSN code")
+        
+        st.markdown("---")
+        
         # Calculate totals
         subtotal = sum(item['taxable_value'] for item in items_list)
         total_tax = sum(item['tax_amount'] for item in items_list)
@@ -495,13 +541,146 @@ with tab1:
 
 with tab2:
     st.subheader("📊 Invoice History")
+    
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        search_term = st.text_input("🔍 Search by Invoice No or Customer Name", "")
+    with col2:
+        st.write("")
+        st.write("")
+        if st.button("🔄 Refresh", use_container_width=True):
+            st.rerun()
+    
     try:
         result = supabase.table('invoices').select('*').order('created_at', desc=True).execute()
         if result.data and len(result.data) > 0:
-            invoices_df = pd.DataFrame(result.data)
-            invoices_df = invoices_df[['invoice_number', 'invoice_date', 'customer_name', 'grand_total', 'created_at']]
-            invoices_df.columns = ['Invoice No', 'Date', 'Customer', 'Amount (₹)', 'Created At']
-            st.dataframe(invoices_df, use_container_width=True, hide_index=True)
+            invoices = result.data
+            
+            # Filter if search term provided
+            if search_term:
+                invoices = [inv for inv in invoices if 
+                           search_term.lower() in inv.get('invoice_number', '').lower() or 
+                           search_term.lower() in inv.get('customer_name', '').lower()]
+            
+            if invoices:
+                # Display invoices as cards with action buttons
+                for invoice in invoices:
+                    with st.container():
+                        col1, col2, col3, col4 = st.columns([2, 2, 1, 2])
+                        
+                        with col1:
+                            st.markdown(f"**Invoice:** {invoice['invoice_number']}")
+                            st.caption(f"Date: {invoice['invoice_date']}")
+                        
+                        with col2:
+                            st.markdown(f"**Customer:** {invoice['customer_name']}")
+                            st.caption(f"GSTIN: {invoice.get('customer_gstin', 'N/A')}")
+                        
+                        with col3:
+                            st.metric("Amount", f"₹{invoice['grand_total']:,.2f}")
+                        
+                        with col4:
+                            col_view, col_download = st.columns(2)
+                            
+                            with col_view:
+                                if st.button("👁️ View", key=f"view_{invoice['id']}", use_container_width=True):
+                                    st.session_state.selected_invoice = invoice
+                                    st.session_state.show_invoice_modal = True
+                            
+                            with col_download:
+                                # Generate PDF for download
+                                pdf_buffer = generate_pdf(invoice, company_data)
+                                st.download_button(
+                                    label="📥",
+                                    data=pdf_buffer,
+                                    file_name=f"{invoice['invoice_number']}.pdf",
+                                    mime="application/pdf",
+                                    key=f"download_{invoice['id']}",
+                                    use_container_width=True
+                                )
+                        
+                        st.markdown("---")
+                
+                # Invoice Detail Modal
+                if st.session_state.get('show_invoice_modal', False) and st.session_state.get('selected_invoice'):
+                    invoice = st.session_state.selected_invoice
+                    
+                    st.markdown("### 📄 Invoice Details")
+                    
+                    # Close button
+                    if st.button("✖️ Close", key="close_modal"):
+                        st.session_state.show_invoice_modal = False
+                        st.session_state.selected_invoice = None
+                        st.rerun()
+                    
+                    # Invoice header
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.markdown(f"""
+                        **Invoice Number:** {invoice['invoice_number']}  
+                        **Date:** {invoice['invoice_date']}  
+                        **Place of Supply:** {invoice.get('place_of_supply', 'N/A')}
+                        """)
+                    
+                    with col2:
+                        st.markdown(f"""
+                        **Customer:** {invoice['customer_name']}  
+                        **GSTIN:** {invoice.get('customer_gstin', 'N/A')}  
+                        **State:** {invoice.get('customer_state', 'N/A')}
+                        """)
+                    
+                    st.markdown("---")
+                    
+                    # Items table
+                    st.markdown("#### 📦 Items")
+                    items = invoice.get('items', [])
+                    if items:
+                        items_df = pd.DataFrame(items)
+                        items_df['S.No'] = range(1, len(items_df) + 1)
+                        items_df = items_df[['S.No', 'product_name', 'hsn_code', 'quantity', 'rate', 'taxable_value', 'gst_rate', 'tax_amount', 'total']]
+                        items_df.columns = ['S.No', 'Product', 'HSN', 'Qty', 'Rate (₹)', 'Taxable Value (₹)', 'GST %', 'Tax (₹)', 'Total (₹)']
+                        
+                        # Format currency columns
+                        for col in ['Rate (₹)', 'Taxable Value (₹)', 'Tax (₹)', 'Total (₹)']:
+                            items_df[col] = items_df[col].apply(lambda x: f"{x:.2f}")
+                        
+                        st.dataframe(items_df, use_container_width=True, hide_index=True)
+                    
+                    # Totals
+                    col1, col2, col3 = st.columns([2, 1, 1])
+                    with col2:
+                        st.markdown(f"""
+                        **Subtotal:** ₹{invoice['subtotal']:,.2f}  
+                        """)
+                        if invoice.get('is_intrastate', True):
+                            st.markdown(f"""
+                            **CGST:** ₹{invoice['total_tax']/2:,.2f}  
+                            **SGST:** ₹{invoice['total_tax']/2:,.2f}
+                            """)
+                        else:
+                            st.markdown(f"**IGST:** ₹{invoice['total_tax']:,.2f}")
+                    
+                    with col3:
+                        st.markdown(f"### **Grand Total:** ₹{invoice['grand_total']:,.2f}")
+                    
+                    st.info(f"**Amount in Words:** {invoice.get('amount_in_words', '')}")
+                    
+                    st.markdown("---")
+                    
+                    # Download button
+                    pdf_buffer = generate_pdf(invoice, company_data)
+                    col1, col2, col3 = st.columns([1, 1, 1])
+                    with col2:
+                        st.download_button(
+                            label="📥 Download Invoice PDF",
+                            data=pdf_buffer,
+                            file_name=f"{invoice['invoice_number']}.pdf",
+                            mime="application/pdf",
+                            key="download_modal",
+                            use_container_width=True
+                        )
+            else:
+                st.info("No invoices match your search.")
         else:
             st.info("No invoices found. Create your first invoice!")
     except Exception as e:
@@ -517,6 +696,148 @@ with tab3:
         st.dataframe(customers_df, use_container_width=True, hide_index=True)
     else:
         st.info("No customers found. Add customers while creating invoices!")
+
+with tab4:
+    st.subheader("📈 HSN Code Analytics")
+    
+    # Month selector
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        selected_month = st.selectbox(
+            "Select Month",
+            options=list(range(1, 13)),
+            format_func=lambda x: datetime(2024, x, 1).strftime('%B'),
+            index=datetime.now().month - 1
+        )
+    with col2:
+        selected_year = st.number_input("Year", min_value=2020, max_value=2030, value=datetime.now().year)
+    
+    try:
+        # Fetch all invoices for the selected month
+        start_date = f"{selected_year}-{selected_month:02d}-01"
+        if selected_month == 12:
+            end_date = f"{selected_year + 1}-01-01"
+        else:
+            end_date = f"{selected_year}-{selected_month + 1:02d}-01"
+        
+        result = supabase.table('invoices').select('*').gte('invoice_date', start_date).lt('invoice_date', end_date).execute()
+        
+        if result.data and len(result.data) > 0:
+            # Process invoices to extract HSN data
+            hsn_data = {}
+            total_invoices = len(result.data)
+            total_value = 0
+            
+            for invoice in result.data:
+                items = invoice.get('items', [])
+                for item in items:
+                    hsn_code = item.get('hsn_code', 'Unknown')
+                    product_name = item.get('product_name', 'Unknown')
+                    quantity = item.get('quantity', 0)
+                    taxable_value = item.get('taxable_value', 0)
+                    gst_rate = item.get('gst_rate', 0)
+                    tax_amount = item.get('tax_amount', 0)
+                    total = item.get('total', 0)
+                    
+                    if hsn_code not in hsn_data:
+                        hsn_data[hsn_code] = {
+                            'hsn_code': hsn_code,
+                            'product_names': set(),
+                            'total_quantity': 0,
+                            'total_taxable_value': 0,
+                            'total_tax': 0,
+                            'total_value': 0,
+                            'invoice_count': 0,
+                            'avg_gst_rate': []
+                        }
+                    
+                    hsn_data[hsn_code]['product_names'].add(product_name)
+                    hsn_data[hsn_code]['total_quantity'] += quantity
+                    hsn_data[hsn_code]['total_taxable_value'] += taxable_value
+                    hsn_data[hsn_code]['total_tax'] += tax_amount
+                    hsn_data[hsn_code]['total_value'] += total
+                    hsn_data[hsn_code]['avg_gst_rate'].append(gst_rate)
+                    
+                total_value += invoice.get('grand_total', 0)
+            
+            # Convert to DataFrame
+            hsn_list = []
+            for hsn, data in hsn_data.items():
+                hsn_list.append({
+                    'HSN/SAC Code': hsn,
+                    'Products': ', '.join(list(data['product_names'])[:3]) + ('...' if len(data['product_names']) > 3 else ''),
+                    'Total Qty': data['total_quantity'],
+                    'Taxable Value': data['total_taxable_value'],
+                    'Total Tax': data['total_tax'],
+                    'Total Value': data['total_value'],
+                    'Avg GST %': sum(data['avg_gst_rate']) / len(data['avg_gst_rate']) if data['avg_gst_rate'] else 0
+                })
+            
+            hsn_df = pd.DataFrame(hsn_list)
+            hsn_df = hsn_df.sort_values('Total Value', ascending=False)
+            
+            # Display summary metrics
+            st.markdown(f"### Summary for {datetime(selected_year, selected_month, 1).strftime('%B %Y')}")
+            
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Total Invoices", total_invoices)
+            with col2:
+                st.metric("Unique HSN Codes", len(hsn_data))
+            with col3:
+                st.metric("Total Taxable Value", f"₹{sum(d['total_taxable_value'] for d in hsn_data.values()):,.2f}")
+            with col4:
+                st.metric("Total Invoice Value", f"₹{total_value:,.2f}")
+            
+            st.markdown("---")
+            
+            # Display HSN-wise breakdown
+            st.markdown("### HSN/SAC Code Breakdown")
+            
+            # Format currency columns
+            hsn_df_display = hsn_df.copy()
+            hsn_df_display['Taxable Value'] = hsn_df_display['Taxable Value'].apply(lambda x: f"₹{x:,.2f}")
+            hsn_df_display['Total Tax'] = hsn_df_display['Total Tax'].apply(lambda x: f"₹{x:,.2f}")
+            hsn_df_display['Total Value'] = hsn_df_display['Total Value'].apply(lambda x: f"₹{x:,.2f}")
+            hsn_df_display['Avg GST %'] = hsn_df_display['Avg GST %'].apply(lambda x: f"{x:.1f}%")
+            
+            st.dataframe(hsn_df_display, use_container_width=True, hide_index=True)
+            
+            # Download button
+            csv = hsn_df.to_csv(index=False)
+            st.download_button(
+                label="📥 Download HSN Report (CSV)",
+                data=csv,
+                file_name=f"HSN_Report_{selected_year}_{selected_month:02d}.csv",
+                mime="text/csv"
+            )
+            
+            # Visualization
+            st.markdown("---")
+            st.markdown("### Top 10 HSN Codes by Value")
+            
+            top_10 = hsn_df.head(10).copy()
+            top_10['Total Value'] = top_10['Total Value'].apply(lambda x: float(x.replace('₹', '').replace(',', '')) if isinstance(x, str) else x)
+            
+            import plotly.express as px
+            fig = px.bar(
+                top_10,
+                x='HSN/SAC Code',
+                y='Total Value',
+                title=f'Top 10 HSN Codes - {datetime(selected_year, selected_month, 1).strftime("%B %Y")}',
+                labels={'Total Value': 'Total Value (₹)'},
+                text='Total Value'
+            )
+            fig.update_traces(texttemplate='₹%{text:,.0f}', textposition='outside')
+            fig.update_layout(showlegend=False)
+            st.plotly_chart(fig, use_container_width=True)
+            
+        else:
+            st.info(f"No invoices found for {datetime(selected_year, selected_month, 1).strftime('%B %Y')}")
+    
+    except Exception as e:
+        st.error(f"Error loading HSN analytics: {e}")
+        st.info("Make sure you have generated some invoices first!")
 
 st.markdown("---")
 st.caption("💡 Tip: Make sure to set up your Supabase tables before using this app. See setup instructions in the documentation.")
