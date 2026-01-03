@@ -450,9 +450,9 @@ with tab1:
         col1, col2, col3, col4, col5 = st.columns([3, 2, 1, 1, 1])
         
         with col1:
-            extra_product = st.text_input("Product/Service Name", key="extra_product")
+            extra_product = st.text_input("Product/Service Name", key="extra_product", value="")
         with col2:
-            extra_hsn = st.text_input("HSN/SAC Code", key="extra_hsn")
+            extra_hsn = st.text_input("HSN/SAC Code", key="extra_hsn", value="")
         with col3:
             extra_qty = st.number_input("Quantity", min_value=1, value=1, key="extra_qty")
         with col4:
@@ -460,32 +460,32 @@ with tab1:
         with col5:
             extra_gst = st.selectbox("GST %", [0, 5, 12, 18, 28], key="extra_gst")
         
-        if st.button("➕ Add Another Item", key="add_extra"):
-            if extra_product and extra_hsn:
-                extra_taxable = extra_qty * extra_rate
-                extra_tax = (extra_taxable * extra_gst) / 100
-                extra_total = extra_taxable + extra_tax
-                
-                extra_item = {
-                    'product_name': extra_product,
-                    'hsn_code': extra_hsn,
-                    'quantity': extra_qty,
-                    'rate': extra_rate,
-                    'taxable_value': extra_taxable,
-                    'gst_rate': extra_gst,
-                    'tax_amount': extra_tax,
-                    'total': extra_total
-                }
-                try:
-                    current_items = list(st.session_state.items)
-                    current_items.append(extra_item)
-                    st.session_state.items = current_items
-                    st.success("✅ Item added!")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Error: {e}")
-            else:
-                st.error("Please fill product name and HSN code")
+        col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 1])
+        with col_btn2:
+            if st.button("➕ Add Another Item", key="add_extra", use_container_width=True):
+                if extra_product and extra_hsn and extra_rate > 0:
+                    extra_taxable = extra_qty * extra_rate
+                    extra_tax = (extra_taxable * extra_gst) / 100
+                    extra_total = extra_taxable + extra_tax
+                    
+                    extra_item = {
+                        'product_name': extra_product.strip(),
+                        'hsn_code': extra_hsn.strip(),
+                        'quantity': extra_qty,
+                        'rate': extra_rate,
+                        'taxable_value': extra_taxable,
+                        'gst_rate': extra_gst,
+                        'tax_amount': extra_tax,
+                        'total': extra_total
+                    }
+                    try:
+                        st.session_state['items'].append(extra_item)
+                        st.success(f"✅ Added: {extra_product}")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+                else:
+                    st.error("Please fill all fields")
         
         st.markdown("---")
         
@@ -495,10 +495,10 @@ with tab1:
         grand_total = sum(item['total'] for item in items_list)
         
         # Check if intrastate or interstate
-        is_intrastate = company_state.strip().lower() == (customer_state.strip().lower() if 'customer_state' in locals() else '')
+        is_intrastate = company_state.strip().lower() == (customer_state.strip().lower() if customer_state else '')
         
         # Display totals
-        st.markdown("---")
+        st.markdown("### 💰 Invoice Summary")
         col1, col2, col3 = st.columns([2, 1, 1])
         
         with col2:
@@ -510,69 +510,77 @@ with tab1:
                 st.metric("IGST", f"₹{total_tax:.2f}")
         
         with col3:
-            st.metric("**Grand Total**", f"**₹{grand_total:.2f}**")
+            st.metric("Grand Total", f"₹{grand_total:.2f}")
         
         amount_in_words = number_to_words(grand_total)
         st.info(f"**Amount in Words:** {amount_in_words}")
         
         st.markdown("---")
         
-        # Generate invoice button
+        # Generate invoice button - ALWAYS VISIBLE when items exist
+        st.markdown("### 📄 Generate Invoice")
+        
         col1, col2, col3 = st.columns([1, 1, 1])
         with col2:
-            if st.button("📄 Generate Invoice", type="primary", use_container_width=True):
-                # Validate customer details
-                if 'customer_name' not in locals() or not customer_name:
-                    st.error("❌ Please fill customer name")
-                elif 'billing_address' not in locals() or not billing_address:
-                    st.error("❌ Please fill billing address")
-                elif 'customer_state' not in locals() or not customer_state:
-                    st.error("❌ Please fill customer state")
-                elif len(items_list) == 0:
-                    st.error("❌ Please add at least one item to the invoice")
-                else:
-                    try:
-                        invoice_data = {
-                            'invoice_number': invoice_number,
-                            'invoice_date': invoice_date.strftime('%Y-%m-%d'),
-                            'customer_name': customer_name,
-                            'customer_gstin': customer_gstin if 'customer_gstin' in locals() else '',
-                            'customer_state': customer_state,
-                            'billing_address': billing_address,
-                            'shipping_address': shipping_address if 'shipping_address' in locals() else billing_address,
-                            'place_of_supply': place_of_supply,
-                            'items': items_list,
-                            'subtotal': subtotal,
-                            'total_tax': total_tax,
-                            'grand_total': grand_total,
-                            'is_intrastate': is_intrastate,
-                            'amount_in_words': amount_in_words,
-                            'created_at': datetime.now().isoformat()
-                        }
-                        
-                        # Generate PDF
-                        with st.spinner('Generating PDF...'):
-                            pdf_buffer = generate_pdf(invoice_data, company_data)
-                        
-                        # Save to database
-                        with st.spinner('Saving to database...'):
-                            if save_invoice(invoice_data):
-                                st.session_state.invoice_generated = True
-                                st.session_state.pdf_buffer = pdf_buffer
-                                st.session_state.current_invoice_number = invoice_number
-                                st.session_state.current_invoice_date = invoice_date.strftime('%Y%m%d')
-                                st.success("✅ Invoice generated successfully!")
-                                st.balloons()
-                                st.rerun()
-                            else:
-                                st.error("❌ Failed to save invoice to database")
-                    except Exception as e:
-                        st.error(f"❌ Error generating invoice: {str(e)}")
-                        import traceback
-                        st.code(traceback.format_exc())
+            generate_clicked = st.button("📄 Generate Invoice", type="primary", use_container_width=True, key="generate_invoice_btn")
+        
+        if generate_clicked:
+            # Validate customer details
+            if not customer_name or not customer_name.strip():
+                st.error("❌ Please fill customer name")
+            elif not billing_address or not billing_address.strip():
+                st.error("❌ Please fill billing address")
+            elif not customer_state or not customer_state.strip():
+                st.error("❌ Please fill customer state")
+            elif len(items_list) == 0:
+                st.error("❌ Please add at least one item to the invoice")
+            else:
+                try:
+                    invoice_data = {
+                        'invoice_number': invoice_number,
+                        'invoice_date': invoice_date.strftime('%Y-%m-%d'),
+                        'customer_name': customer_name.strip(),
+                        'customer_gstin': customer_gstin.strip() if customer_gstin else '',
+                        'customer_state': customer_state.strip(),
+                        'billing_address': billing_address.strip(),
+                        'shipping_address': shipping_address.strip() if shipping_address else billing_address.strip(),
+                        'place_of_supply': place_of_supply,
+                        'items': items_list,
+                        'subtotal': subtotal,
+                        'total_tax': total_tax,
+                        'grand_total': grand_total,
+                        'is_intrastate': is_intrastate,
+                        'amount_in_words': amount_in_words,
+                        'created_at': datetime.now().isoformat()
+                    }
+                    
+                    # Generate PDF
+                    with st.spinner('📄 Generating PDF...'):
+                        pdf_buffer = generate_pdf(invoice_data, company_data)
+                    
+                    # Save to database
+                    with st.spinner('💾 Saving to database...'):
+                        if save_invoice(invoice_data):
+                            st.session_state.invoice_generated = True
+                            st.session_state.pdf_buffer = pdf_buffer
+                            st.session_state.current_invoice_number = invoice_number
+                            st.session_state.current_invoice_date = invoice_date.strftime('%Y%m%d')
+                            st.success("✅ Invoice generated successfully!")
+                            st.balloons()
+                            st.rerun()
+                        else:
+                            st.error("❌ Failed to save invoice to database")
+                except Exception as e:
+                    st.error(f"❌ Error generating invoice: {str(e)}")
+                    import traceback
+                    st.code(traceback.format_exc())
     
-    # Download and reset section
-    if st.session_state.invoice_generated and hasattr(st.session_state, 'pdf_buffer'):
+    else:
+        # No items added yet
+        st.info("👆 Add at least one item to generate invoice")
+    
+    # Download and reset section - Show AFTER generation
+    if st.session_state.get('invoice_generated', False) and hasattr(st.session_state, 'pdf_buffer'):
         st.markdown("---")
         st.success("🎉 Invoice Generated Successfully!")
         
@@ -589,7 +597,7 @@ with tab1:
             
             st.write("")
             
-            if st.button("🔄 Create New Invoice", use_container_width=True, type="primary"):
+            if st.button("🔄 Create New Invoice", use_container_width=True, type="primary", key="new_invoice_btn"):
                 st.session_state.items = []
                 st.session_state.invoice_generated = False
                 if hasattr(st.session_state, 'pdf_buffer'):
@@ -599,8 +607,6 @@ with tab1:
                 if hasattr(st.session_state, 'current_invoice_date'):
                     delattr(st.session_state, 'current_invoice_date')
                 st.rerun()
-    else:
-        st.info("👆 Add items to the invoice to see totals and generate PDF")
 
 with tab2:
     st.subheader("📊 Invoice History")
