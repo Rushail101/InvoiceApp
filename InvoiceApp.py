@@ -364,8 +364,12 @@ with tab1:
                 'tax_amount': tax_amount,
                 'total': total
             }
-            if 'items' not in st.session_state:
+            # Ensure items list exists
+            if 'items' not in st.session_state or st.session_state.items is None:
                 st.session_state.items = []
+            if not isinstance(st.session_state.items, list):
+                st.session_state.items = []
+            
             st.session_state.items.append(item)
             st.rerun()
         else:
