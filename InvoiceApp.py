@@ -95,21 +95,27 @@ def number_to_words(num):
 
 # Database functions
 def get_next_invoice_number():
-    """Get next invoice number from database"""
+    """Get suggested invoice number from database (last invoice + 1)"""
     try:
-        result = supabase.table('invoice_counter').select('*').execute()
+        result = supabase.table('invoices').select('invoice_number').order('created_at', desc=True).limit(1).execute()
         if result.data and len(result.data) > 0:
-            current = result.data[0]['counter']
-            next_num = current + 1
-            supabase.table('invoice_counter').update({'counter': next_num}).eq('id', 1).execute()
-            return f"INV-{next_num:05d}"
-        else:
-            # Initialize counter
-            supabase.table('invoice_counter').insert({'id': 1, 'counter': 1}).execute()
-            return "INV-00001"
+            last_invoice = result.data[0]['invoice_number']
+            # Try to extract number and increment
+            try:
+                # Handle formats like INV-00001, BILL-123, etc.
+                import re
+                numbers = re.findall(r'\d+', last_invoice)
+                if numbers:
+                    last_num = int(numbers[-1])
+                    next_num = last_num + 1
+                    # Try to maintain the format
+                    prefix = last_invoice.rsplit(str(last_num), 1)[0]
+                    return f"{prefix}{next_num:05d}"
+            except:
+                pass
+        return "INV-00001"
     except Exception as e:
-        st.error(f"Error getting invoice number: {e}")
-        return f"INV-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        return "INV-00001"
 
 def save_customer(customer_data):
     """Save or update customer in database"""
@@ -273,12 +279,12 @@ st.markdown("---")
 # Sidebar for company details
 with st.sidebar:
     st.header("⚙️ Company Details")
-    company_name = st.text_input("Company Name", "Your Company Pvt Ltd")
-    company_address = st.text_area("Address", "123, Business Street\nCity - 400001\nMaharashtra, India")
-    company_gstin = st.text_input("GSTIN", "27AABCU9603R1ZM")
-    company_state = st.text_input("State", "Maharashtra")
+    company_name = st.text_input("Company Name", "NEEDLE POINT")
+    company_address = st.text_area("Address", "First Floor, J3/70, RAJOURI GARDEN\nNew Delhi, New Delhi, Delhi, 110027")
+    company_gstin = st.text_input("GSTIN", "07AAXFN6403D1Z5")
+    company_state = st.text_input("State", "Delhi")
     company_phone = st.text_input("Phone", "+91-9876543210")
-    company_bank = st.text_area("Bank Details (Optional)", "Bank: HDFC Bank\nA/c No: 12345678901234\nIFSC: HDFC0001234\nBranch: Mumbai")
+    company_bank = st.text_area("Bank Details (Optional)", "Bank: ICICI Bank\nA/c No: 181805001556\nIFSC: ICIC0001818\nBranch: ICICI BANK LTD, WH-9, Mayapuri Phase 1, 110044\nUPI: needlepoint.ibz@icici")
 
 company_data = {
     'name': company_name,
@@ -350,10 +356,28 @@ with tab1:
     
     with col2:
         st.subheader("Invoice Details")
-        invoice_number = get_next_invoice_number()
-        st.text_input("Invoice Number", invoice_number, disabled=True)
+        
+        # Get suggested invoice number
+        suggested_invoice = get_next_invoice_number()
+        
+        # Manual invoice number entry with suggestion
+        invoice_number = st.text_input(
+            "Invoice Number *", 
+            value=suggested_invoice,
+            help=f"Suggested: {suggested_invoice}. You can edit this to any value.",
+            placeholder="e.g., INV-00001, BILL-2024-001, etc."
+        )
+        
         invoice_date = st.date_input("Invoice Date", datetime.now())
         place_of_supply = st.text_input("Place of Supply", customer_state if 'customer_state' in locals() else "")
+        
+        # Warning if invoice number already exists
+        try:
+            existing = supabase.table('invoices').select('invoice_number').eq('invoice_number', invoice_number).execute()
+            if existing.data and len(existing.data) > 0:
+                st.warning(f"⚠️ Invoice number **{invoice_number}** already exists in the database!")
+        except:
+            pass
     
     st.markdown("---")
     st.subheader("Add Products/Services")
