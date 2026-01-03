@@ -150,7 +150,17 @@ with t1:
             "tax_amount": tax_amt, "total": taxable + tax_amt
         })
         st.rerun()
+    # Use .get() to provide a fallback empty list if the key is missing or corrupted
+current_items = st.session_state.get('items', [])
 
+if current_items: # Only proceed if the list is not empty
+    try:
+        items_df = pd.DataFrame(current_items)
+        # ... rest of your dataframe processing code ...
+    except ValueError as e:
+        st.error(f"Data format error: {e}")
+else:
+    st.info("No items added to the invoice yet.")
     if st.session_state.items:
         items_df = pd.DataFrame(st.session_state.items)
         st.dataframe(items_df[['product_name', 'hsn_code', 'total']], use_container_width=True)
@@ -229,3 +239,4 @@ with t4:
             st.dataframe(pd.DataFrame(tax_summary).groupby("Rate").sum(), use_container_width=True)
     else:
         st.info("No data yet.")
+
