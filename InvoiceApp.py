@@ -349,30 +349,35 @@ with tab1:
     st.markdown("---")
     st.subheader("Add Products/Services")
     
-    col1, col2, col3, col4, col5 = st.columns([3, 2, 1, 1, 1])
+    # Create a form for better input handling
+    with st.form(key="add_item_form", clear_on_submit=True):
+        col1, col2, col3, col4, col5 = st.columns([3, 2, 1, 1, 1])
+        
+        with col1:
+            product_name = st.text_input("Product/Service Name", key="product_form")
+        with col2:
+            hsn_code = st.text_input("HSN/SAC Code", key="hsn_form")
+        with col3:
+            quantity = st.number_input("Quantity", min_value=1, value=1, key="qty_form")
+        with col4:
+            rate = st.number_input("Rate (₹)", min_value=0.0, value=0.0, step=0.01, key="rate_form")
+        with col5:
+            gst_rate = st.selectbox("GST %", [0, 5, 12, 18, 28], key="gst_form")
+        
+        col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 1])
+        with col_btn2:
+            submit_button = st.form_submit_button("➕ Add Item", use_container_width=True, type="primary")
     
-    with col1:
-        product_name = st.text_input("Product/Service Name", key="product", value="")
-    with col2:
-        hsn_code = st.text_input("HSN/SAC Code", key="hsn", value="")
-    with col3:
-        quantity = st.number_input("Quantity", min_value=1, value=1, key="qty")
-    with col4:
-        rate = st.number_input("Rate (₹)", min_value=0.0, value=0.0, step=0.01, key="rate")
-    with col5:
-        gst_rate = st.selectbox("GST %", [0, 5, 12, 18, 28], key="gst")
-    
-    col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 1])
-    with col_btn2:
-        add_item_clicked = st.button("➕ Add Item", use_container_width=True, type="primary")
-    
-    if add_item_clicked:
+    # Handle form submission
+    if submit_button:
+        st.write(f"DEBUG: Form submitted with product='{product_name}', hsn='{hsn_code}', rate={rate}")
+        
         if not product_name or not product_name.strip():
             st.error("❌ Please enter product name")
         elif not hsn_code or not hsn_code.strip():
             st.error("❌ Please enter HSN/SAC code")
         elif rate <= 0:
-            st.error("❌ Please enter a valid rate")
+            st.error("❌ Please enter a valid rate greater than 0")
         else:
             try:
                 taxable_value = quantity * rate
@@ -390,22 +395,27 @@ with tab1:
                     'total': total
                 }
                 
-                # Initialize if needed
-                if 'items' not in st.session_state:
-                    st.session_state['items'] = []
+                st.write(f"DEBUG: Item created: {item}")
                 
-                # Add item
-                st.session_state['items'].append(item)
+                # Initialize items list if it doesn't exist
+                if 'items' not in st.session_state:
+                    st.session_state.items = []
+                    st.write("DEBUG: Initialized empty items list")
+                
+                # Append the item
+                st.session_state.items.append(item)
+                st.write(f"DEBUG: Item appended. New count: {len(st.session_state.items)}")
                 
                 st.success(f"✅ Added: {product_name} - ₹{total:.2f}")
                 st.balloons()
                 
-                # Force rerun to clear form
+                # Rerun to refresh the page
                 st.rerun()
                 
             except Exception as e:
                 st.error(f"❌ Error adding item: {str(e)}")
-                st.code(f"Debug info: {e}")
+                import traceback
+                st.code(traceback.format_exc())
     
     # Display current items count ALWAYS
     current_items = st.session_state.get('items', [])
