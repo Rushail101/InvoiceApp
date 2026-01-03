@@ -366,7 +366,7 @@ with tab1:
             st.error("Please fill product name and HSN code")
     
     # Display items
-    if st.session_state.items:
+    if st.session_state.items and len(st.session_state.items) > 0:
         st.markdown("### 📦 Items Added")
         
         items_df = pd.DataFrame(st.session_state.items)
@@ -464,6 +464,8 @@ with tab1:
                 if hasattr(st.session_state, 'pdf_buffer'):
                     delattr(st.session_state, 'pdf_buffer')
                 st.rerun()
+    else:
+        st.info("👆 Add items to the invoice to see totals and generate PDF")
 
 with tab2:
     st.subheader("📊 Invoice History")
